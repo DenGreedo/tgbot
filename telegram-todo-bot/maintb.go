@@ -1,7 +1,13 @@
 package main
 
 import (
+	"log"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 type Task struct {
@@ -74,4 +80,122 @@ func (s *Storage) delete(id int) bool {
 	}
 	delete(s.tasks, id)
 	return true
+}
+
+func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string) {
+	msg := tgbotapi.NewMessage(chatID, text)
+	if _, err := bot.Send(msg); err != nil {
+		log.Printf("Ошибка отправки сообщения: %v", err)
+	}
+}
+
+func formatTasksList(tasks []Task) string {
+	if len(tasks) == 0 {
+		return "Список задач пуст."
+	}
+	var sb strings.Builder
+	sb.WriteString("Ваши задачи:\n")
+	for _, t := range tasks {
+		status := "⬜"
+		if t.Done {
+			status = "✅"
+		}
+		sb.WriteString(strconv.Itoa(t.ID) + ". " + status + " " + t.Title + "\n")
+	}
+	return sb.String()
+}
+
+func handleCommand(bot *tgbotapi.BotAPI, storage *Storage, chatID int64, command string) {
+	parts := strings.Fields(command)
+	if len(parts) == 0 {
+		return
+	}
+
+	switch parts[0] {
+	case "/start":
+		sendMessage(bot, chatID, "Привет! Я бот для управления задачами.\nИспользуй /help для списка команд.")
+
+	case "/help":
+		helpText := "Доступные команды:\n" +
+			"/add <текст> — добавить задачу\n" +
+			"/list — показать все задачи\n" +
+			"/done <id> — отметить задачу выполненной\n" +
+			"/delete <id> — удалить задачу"
+		sendMessage(bot, chatID, helpText)
+
+	case "/add":
+		if len(parts) < 2 {
+			sendMessage(bot, chatID, "Использование: /add <текст задачи>")
+			return
+		}
+		title := strings.Join(parts[1:], " ")
+		id := storage.add(title)
+		sendMessage(bot, chatID, "Задача добавлена с ID: "+strconv.Itoa(id))
+
+	case "/list":
+		tasks := storage.list()
+		sendMessage(bot, chatID, formatTasksList(tasks))
+
+	case "/done":
+		if len(parts) != 2 {
+			sendMessage(bot, chatID, "Использование: /done <id>")
+			return
+		}
+		id, err := strconv.Atoi(parts[1])
+		if err != nil {
+			sendMessage(bot, chatID, "ID должен быть числом")
+			return
+		}
+		if storage.done(id) {
+			sendMessage(bot, chatID, "Задача #"+strconv.Itoa(id)+" отмечена выполненной ✅")
+		} else {
+			sendMessage(bot, chatID, "Задача с таким ID не найдена")
+		}
+
+	case "/delete":
+		if len(parts) != 2 {
+			sendMessage(bot, chatID, "Использование: /delete <id>")
+			return
+		}
+		id, err := strconv.Atoi(parts[1])
+		if err != nil {
+			sendMessage(bot, chatID, "ID должен быть числом")
+			return
+		}
+		if storage.delete(id) {
+			sendMessage(bot, chatID, "Задача #"+strconv.Itoa(id)+" удалена")
+		} else {
+			sendMessage(bot, chatID, "Задача с таким ID не найдена")
+		}
+
+	default:
+		sendMessage(bot, chatID, "Неизвестная команда. Напиши /help для списка.")
+	}
+}
+
+func main() {
+	token := os.Getenv("TELEGRAM_BOT_TOKEN")
+	if token == "" {
+		log.Fatal("Не задан TELEGRAM_BOT_TOKEN. Получите токен у @BotFather и установите переменную окружения.")
+	}
+
+	bot, err := tgbotapi.NewBotAPI(token)
+	if err != nil {
+		log.Fatalf("Ошибка подключения к Telegram API: %v", err)
+	}
+
+	log.Printf("Бот запущен как %s", bot.Self.UserName)
+
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
+
+	updates := bot.GetUpdatesChan(u)
+	storage := NewStorage()
+
+	for update := range updates {
+		if update.Message == nil {
+			continue
+		}
+		go handleCommand(bot, storage, update.Message.Chat.ID, update.Message.Text)
+	}
 }
