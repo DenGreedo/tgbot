@@ -15,4 +15,4 @@
 ## Что необходимо
 
 - Токен бота Telegram (получить у [@BotFather](https://t.me/BotFather))
-- Доступ к `api.telegram.org` (при необходимости — VPN или прокси)
+- Доступ к Telegram (при необходимости — VPN или прокси)
