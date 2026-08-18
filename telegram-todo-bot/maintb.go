@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -100,7 +101,7 @@ func formatTasksList(tasks []Task) string {
 		if t.Done {
 			status = "✅"
 		}
-		sb.WriteString(strconv.Itoa(t.ID) + ". " + status + " " + t.Title + "\n")
+		fmt.Fprintf(&sb, "%d. %s %s\n", t.ID, status, t.Title)
 	}
 	return sb.String()
 }
